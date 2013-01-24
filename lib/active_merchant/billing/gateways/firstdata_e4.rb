@@ -1,15 +1,18 @@
 module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
     class FirstdataE4Gateway < Gateway
-      self.test_url = "https://api.demo.globalgatewaye4.firstdata.com/transaction"
-      self.live_url = "https://api.globalgatewaye4.firstdata.com/transaction"
+
+      # V11 is needed to support tokenization
+      self.test_url = "https://api.demo.globalgatewaye4.firstdata.com/transaction/v11"
+      self.live_url = "https://api.globalgatewaye4.firstdata.com/transaction/v11"
 
       TRANSACTIONS = {
         :sale          => "00",
         :authorization => "01",
         :capture       => "32",
         :void          => "33",
-        :credit        => "34"
+        :credit        => "34",
+        :store         => "05" # THIS IS KNOWN AS A PRE-AUTH in the firstdata
       }
 
       POST_HEADERS = {
@@ -18,6 +21,8 @@ module ActiveMerchant #:nodoc:
       }
 
       SUCCESS = "true"
+      
+      AUTH_ONLY_AMOUNT = 0
 
       SENSITIVE_FIELDS = [:verification_str2, :expiry_date, :card_number]
 
@@ -48,6 +53,11 @@ module ActiveMerchant #:nodoc:
 
       def void(authorization, options = {})
         commit(:void, build_capture_or_credit_request(money_from_authorization(authorization), authorization, options))
+      end
+      
+      def store(authorization, transarmor_token, options = {})
+        options.merge!({:transarmor_token => transarmor_token})
+        commit(:store, build_sale_or_authorization_request(AUTH_ONLY_AMOUNT, authorization, options))
       end
 
       def refund(money, authorization, options = {})
