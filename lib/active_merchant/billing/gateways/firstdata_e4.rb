@@ -125,6 +125,7 @@ module ActiveMerchant #:nodoc:
         xml.tag! "Expiry_Date", expdate(credit_card)
         xml.tag! "CardHoldersName", credit_card.name
         xml.tag! "CardType", credit_card.brand
+        xml.tag! "TransarmorToken", credit_card.transarmor_token
 
         if credit_card.verification_value?
           xml.tag! "CVD_Presence_Ind", "1"
