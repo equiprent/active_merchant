@@ -121,11 +121,18 @@ module ActiveMerchant #:nodoc:
       end
 
       def add_credit_card(xml, credit_card)
-        xml.tag! "Card_Number", credit_card.number
+        
         xml.tag! "Expiry_Date", expdate(credit_card)
         xml.tag! "CardHoldersName", credit_card.name
         xml.tag! "CardType", credit_card.brand
-        xml.tag! "TransarmorToken", credit_card.transarmor_token
+        
+        if credit_card.transarmor_token.blank?
+          xml.tag! "Card_Number", credit_card.number
+        else
+          xml.tag! "TransarmorToken", credit_card.transarmor_token
+        end
+        
+
 
         if credit_card.verification_value?
           xml.tag! "CVD_Presence_Ind", "1"
