@@ -44,7 +44,8 @@ module ActiveMerchant #:nodoc:
       end
 
       def purchase(money, credit_card, options = {})
-        commit(:sale, build_sale_or_authorization_request(money, credit_card, options))
+        result = commit(:sale, build_sale_or_authorization_request(money, credit_card, options))
+        binding.pry
       end
 
       def capture(money, authorization, options = {})
@@ -85,7 +86,7 @@ module ActiveMerchant #:nodoc:
         add_amount(xml, money)
         add_credit_card(xml, credit_card)
         add_customer_data(xml, options)
-        add_invoice(xml, options)
+        # add_invoice(xml, options)
 
         xml.target!
       end
@@ -153,7 +154,7 @@ module ActiveMerchant #:nodoc:
       end
 
       def add_invoice(xml, options)
-        xml.tag! "Reference_No", options[:order_id]
+        # xml.tag! "Reference_No", options[:order_id]
         xml.tag! "Reference_3",  options[:description] if options[:description]
       end
 
