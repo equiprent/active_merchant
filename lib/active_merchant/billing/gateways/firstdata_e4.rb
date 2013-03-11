@@ -3,8 +3,8 @@ module ActiveMerchant #:nodoc:
     class FirstdataE4Gateway < Gateway
 
       # V11 is needed to support tokenization
-      self.test_url = "https://api.demo.globalgatewaye4.firstdata.com/transaction/v11"
-      self.live_url = "https://api.globalgatewaye4.firstdata.com/transaction/v11"
+      self.test_url = "https://api.demo.globalgatewaye4.firstdata.com/transaction/v12"
+      self.live_url = "https://api.globalgatewaye4.firstdata.com/transaction/v12"
 
       TRANSACTIONS = {
         :sale          => "00",
@@ -14,8 +14,8 @@ module ActiveMerchant #:nodoc:
         :credit        => "34",
         :store         => "05" # THIS IS KNOWN AS A PRE-AUTH in the firstdata
       }
-
-      POST_HEADERS = {
+      
+       POST_HEADERS = {
         "Accepts" => "application/xml",
         "Content-Type" => "application/xml"
       }
@@ -44,7 +44,24 @@ module ActiveMerchant #:nodoc:
       end
 
       def purchase(money, credit_card, options = {})
-        commit(:sale, build_sale_or_authorization_request(money, credit_card, options))
+        transaction_body = build_sale_or_authorization_request(money, credit_card, options)
+        result = commit(:sale, transaction_body)
+      end
+
+      def build_auth_header(transaction_body)
+        gge4_date = Time.now.utc.strftime("%Y-%m-%dT%H:%M:%S" + 'Z')
+        key_id = @options[:key_id]
+        key = @options[:hmac_key]
+        content_digest = Digest::SHA1.hexdigest(transaction_body)
+    
+        hmac_string =  "POST\n" + POST_HEADERS["Content-Type"] + "\n" + content_digest + "\n" + gge4_date + "\n" + '/transaction/v12'
+
+        @auth_headers = 
+          {'X-GGe4-Content-SHA1' => content_digest,
+          'X-GGe4-Date' => gge4_date,
+          'Authorization' => 'GGE4_API ' + key_id + ':' + Base64.encode64(
+          OpenSSL::HMAC.digest('sha1', key, hmac_string)) }
+
       end
 
       def capture(money, authorization, options = {})
@@ -85,7 +102,7 @@ module ActiveMerchant #:nodoc:
         add_amount(xml, money)
         add_credit_card(xml, credit_card)
         add_customer_data(xml, options)
-        add_invoice(xml, options)
+        # add_invoice(xml, options)
 
         xml.target!
       end
@@ -153,7 +170,7 @@ module ActiveMerchant #:nodoc:
       end
 
       def add_invoice(xml, options)
-        xml.tag! "Reference_No", options[:order_id]
+        # xml.tag! "Reference_No", options[:order_id]
         xml.tag! "Reference_3",  options[:description] if options[:description]
       end
 
@@ -161,10 +178,20 @@ module ActiveMerchant #:nodoc:
         "#{format(credit_card.month, :two_digits)}#{format(credit_card.year, :two_digits)}"
       end
 
+      def post_headers
+        if @auth_headers
+          POST_HEADERS.merge(@auth_headers) 
+        else
+          POST_HEADERS
+        end
+      end
+
       def commit(action, request)
         url = (test? ? self.test_url : self.live_url)
         begin
-          response = parse(ssl_post(url, build_request(action, request), POST_HEADERS))
+          body = build_request(action, request)
+          build_auth_header(body)
+          response = parse(ssl_post(url, body, post_headers))
         rescue ResponseError => e
           response = parse_error(e.response)
         end
