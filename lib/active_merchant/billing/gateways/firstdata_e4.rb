@@ -1,8 +1,9 @@
 module ActiveMerchant #:nodoc:
   module Billing #:nodoc:
     class FirstdataE4Gateway < Gateway
-      self.test_url = "https://api.demo.globalgatewaye4.firstdata.com/transaction/v12"
-      self.live_url = "https://api.globalgatewaye4.firstdata.com/transaction/v12"
+      END_POINT = '/transaction/v12'
+      self.test_url = "https://api.demo.globalgatewaye4.firstdata.com#{END_POINT}"
+      self.live_url = "https://api.globalgatewaye4.firstdata.com#{END_POINT}"
 
       TRANSACTIONS = {
         :sale          => "00",
@@ -14,8 +15,8 @@ module ActiveMerchant #:nodoc:
       }
       
        POST_HEADERS = {
-        "Accepts" => "application/xml",
-        "Content-Type" => "application/xml"
+        "Accepts"       => "application/xml",
+        "Content-Type"  => "application/xml"
       }
 
       SUCCESS = "true"
@@ -46,22 +47,6 @@ module ActiveMerchant #:nodoc:
         commit(:sale, transaction_body)
       end
 
-      def build_auth_header(transaction_body)
-        gge4_date = Time.now.utc.strftime("%Y-%m-%dT%H:%M:%S" + 'Z')
-        key_id = @options[:key_id]
-        key = @options[:hmac_key]
-        content_digest = Digest::SHA1.hexdigest(transaction_body)
-    
-        hmac_string =  "POST\n" + POST_HEADERS["Content-Type"] + "\n" + content_digest + "\n" + gge4_date + "\n" + '/transaction/v12'
-
-        @auth_headers = 
-          {'X-GGe4-Content-SHA1' => content_digest,
-          'X-GGe4-Date' => gge4_date,
-          'Authorization' => 'GGE4_API ' + key_id + ':' + Base64.encode64(
-          OpenSSL::HMAC.digest('sha1', key, hmac_string)) }
-
-      end
-
       def capture(money, authorization, options = {})
         commit(:capture, build_capture_or_credit_request(money, authorization, options))
       end
@@ -79,7 +64,23 @@ module ActiveMerchant #:nodoc:
         commit(:credit, build_capture_or_credit_request(money, authorization, options))
       end
 
-      private
+private
+
+      def build_auth_header(transaction_body)
+        gge4_date       = Time.now.utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        content_digest  = Digest::SHA1.hexdigest(transaction_body)
+        hmac_string     = ['POST', POST_HEADERS["Content-Type"], content_digest, gge4_date, END_POINT].join("\n")
+
+        {'X-GGe4-Content-SHA1' => content_digest,
+         'X-GGe4-Date'         => gge4_date,
+         'Authorization'       => build_digest(hmac_string)}
+      end
+
+      def build_digest(hmac_string)
+        digest =  OpenSSL::HMAC.digest('sha1', @options[:hmac_key], hmac_string)
+        encoded = Base64.encode64(digest)
+        "GGE4_API #{@options[:key_id]}:#{encoded}"
+      end
 
       def build_request(action, body)
         xml = Builder::XmlMarkup.new
@@ -136,22 +137,29 @@ module ActiveMerchant #:nodoc:
       end
 
       def add_credit_card(xml, credit_card)
-        
+        add_account_info(xml, credit_card)
+        add_cc_or_token(xml, credit_card)
+        add_cvc(xml, credit_card)
+      end
+
+      def add_account_info(xml, credit_card)
         xml.tag! "Expiry_Date", expdate(credit_card)
         xml.tag! "CardHoldersName", credit_card.name
         xml.tag! "CardType", credit_card.brand
-        
+      end
+
+      def add_cvc(xml, credit_card)
+        if credit_card.verification_value?
+          xml.tag! "CVD_Presence_Ind", "1"
+          xml.tag! "VerificationStr2", credit_card.verification_value
+        end
+      end
+
+      def add_cc_or_token(xml, credit_card)
         if credit_card.transarmor_token.blank?
           xml.tag! "Card_Number", credit_card.number
         else
           xml.tag! "TransarmorToken", credit_card.transarmor_token
-        end
-        
-
-
-        if credit_card.verification_value?
-          xml.tag! "CVD_Presence_Ind", "1"
-          xml.tag! "VerificationStr2", credit_card.verification_value
         end
       end
 
@@ -176,20 +184,13 @@ module ActiveMerchant #:nodoc:
         "#{format(credit_card.month, :two_digits)}#{format(credit_card.year, :two_digits)}"
       end
 
-      def post_headers
-        if @auth_headers
-          POST_HEADERS.merge(@auth_headers) 
-        else
-          POST_HEADERS
-        end
-      end
 
       def commit(action, request)
         url = (test? ? self.test_url : self.live_url)
         begin
           body = build_request(action, request)
-          build_auth_header(body)
-          response = parse(ssl_post(url, body, post_headers))
+          headers = POST_HEADERS.merge(build_auth_header(body) || {})
+          response = parse(ssl_post(url, body, headers))
         rescue ResponseError => e
           response = parse_error(e.response)
         end
