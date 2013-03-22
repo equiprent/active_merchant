@@ -232,6 +232,7 @@ private
         else
           result = (response[:exact_message] || "")
           result << " - #{response[:bank_message]}" if response[:bank_message].present?
+          result << " - #{response[:bank_resp_code]}" if response[:bank_resp_code].present?
           result
         end
       end
